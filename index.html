@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Do I Need a Jacket?</title>
+  <style>
+    :root{
+      --bg:#0b1220;--panel:#0f172a;--panel2:#131c33;--text:#f1f5f9;--muted:#9fb0c6;--accent:#38bdf8;
+      --ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--border:#203050;--card:#0c1427
+    }
+    *{box-sizing:border-box} html,body{height:100%} body{
+      margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      background:linear-gradient(180deg,var(--bg),#0c162a 55%,#0c1a33);color:var(--text)
+    }
+    .container{max-width:760px;margin:0 auto;padding:16px clamp(16px,4vw,28px) 80px}
+    .header{display:flex;align-items:center;gap:12px;margin:8px 0 18px}
+    .logo{width:38px;height:38px;border-radius:12px;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-weight:900;color:#06263b}
+    .title{font-weight:800;font-size:1.35rem}
+    .subtitle{color:var(--muted);margin-top:-4px}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .row{display:grid;grid-template-columns:1fr min(40%,220px) min(28%,140px);gap:10px}
+    @media (max-width:640px){.row{grid-template-columns:1fr 1fr;}.row > .wide{grid-column:1 / -1}}
+    input,select,button{
+      font-size:16px;background:var(--panel2);border:1px solid var(--border);color:var(--text);
+      padding:12px;border-radius:12px;outline:none
+    }
+    button{background:var(--accent);color:#042030;border:none;font-weight:800;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .helper{color:var(--muted);font-size:.9rem;margin-top:6px}
+    .ad{background:var(--card);border:1px dashed var(--border);color:var(--muted);padding:12px;border-radius:12px;margin-top:12px;text-align:center}
+    .results{margin-top:14px;display:grid;gap:12px}
+    .summary{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .summary h3{margin:0 0 8px}
+    .badge{display:inline-block;padding:6px 10px;border-radius:10px;font-weight:800}
+    .yes{background:color-mix(in oklab,var(--bad) 35%, black)}
+    .maybe{background:color-mix(in oklab,var(--warn) 35%, black)}
+    .no{background:color-mix(in oklab,var(--ok) 35%, black)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
+    .tiny{color:var(--muted);font-size:.85rem}
+    .rowline{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+    .rowline:last-child{border-bottom:0}
+    .err{background:#3a1320;border:1px solid #70223f;color:#ffd7e2;padding:10px;border-radius:10px;margin-top:10px}
+    .foot{color:var(--muted);font-size:.85rem;margin-top:16px}
+    a{color:var(--accent)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">🧥</div>
+      <div>
+        <div class="title">Do I Need a Jacket?</div>
+        <div class="subtitle">Type a place → get a 6-hour answer + details.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <input id="place" class="wide" placeholder="Enter a place: 'Pizzana Brentwood', 'Yosemite', '90064'…" />
+        <select id="run">
+          <option value="normal">I run: Normal</option>
+          <option value="hot">I run: Hot (tolerate cold)</option>
+          <option value="cold">I run: Cold (get chilly)</option>
+        </select>
+        <button id="go">Check weather</button>
+      </div>
+      <div class="helper">Works with restaurants, parks, venues, cities, or ZIP codes.</div>
+
+      <div id="ad-slot" class="ad">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8115753860184199"
+     crossorigin="anonymous"></script>
+<!-- Jacket -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-8115753860184199"
+     data-ad-slot="6371473164"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+        <div class="tiny">Placeholder box (moves under results after you search)</div>
+      </div>
+      <div id="error" class="err" style="display:none"></div>
+      <div id="results" class="results" style="display:none"></div>
+    </div>
+
+    <div class="foot tiny">
+      Data by Open-Meteo & OpenStreetMap / Nominatim. For personal use only.
+    </div>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const placeInput = el('place');
+    const runSel = el('run');
+    const goBtn = el('go');
+    const results = el('results');
+    const adSlot = el('ad-slot');
+    const errBox = el('error');
+
+    function toF(c){ return (c * 9/5) + 32; }
+    function mph(kmh){ return kmh * 0.621371; }
+
+    function windChillF(tempF, windMph){
+      if (tempF > 50 || windMph <= 3) return tempF;
+      return 35.74 + 0.6215*tempF - 35.75*Math.pow(windMph,0.16) + 0.4275*tempF*Math.pow(windMph,0.16);
+    }
+
+    function jacketDecision(hourly){
+      let noJacketMin = 66;
+      let maybeMin = 55;
+      const bias = runSel.value;
+      if (bias === 'hot'){ noJacketMin -= 5; maybeMin -= 5; }
+      if (bias === 'cold'){ noJacketMin += 5; maybeMin += 5; }
+      let worst = { level: 'no', reason: 'Comfortable for the next 6 hours.' };
+      for (const h of hourly){
+        const eff = Math.min(h.apparentF, windChillF(h.apparentF, h.windMph));
+        let level = 'no', why = [];
+        if (h.precipMm >= 1 || h.pop >= 50) { level = 'maybe'; why.push('chance of rain'); }
+        if (h.precipMm >= 2.5 || h.pop >= 70) { level = 'yes'; why.push('likely rain'); }
+        if (eff < maybeMin) { level = 'yes'; why.push('chilly temps'); }
+        else if (eff < noJacketMin) { level = (level === 'yes') ? 'yes' : 'maybe'; why.push('cool temps'); }
+        if (h.windMph >= 20 && level !== 'yes') { level = 'maybe'; why.push('breezy'); }
+        const rank = (x)=> x==='yes'?2 : x==='maybe'?1 : 0;
+        if (rank(level) > rank(worst.level)){ worst = { level, reason: why.join(', ') }; }
+      }
+      return worst;
+    }
+
+    async function geocode(q){
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&limit=1&addressdetails=1`;
+      const res = await fetch(url, { headers:{ 'Accept-Language':'en' } });
+      if (!res.ok) throw new Error('Geocoding failed');
+      const data = await res.json();
+      if (!data.length) throw new Error('No matching place found');
+      const p = data[0];
+      return { lat: parseFloat(p.lat), lon: parseFloat(p.lon), label: p.display_name };
+    }
+
+    async function getWeather(lat, lon){
+      const params = new URLSearchParams({
+        latitude: lat, longitude: lon,
+        hourly: ['temperature_2m','apparent_temperature','relative_humidity_2m','wind_speed_10m','precipitation','precipitation_probability','uv_index','is_day'].join(','),
+        forecast_days: '2',
+        timezone: 'auto'
+      });
+      const url = `https://api.open-meteo.com/v1/forecast?${params}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Weather fetch failed');
+      return await res.json();
+    }
+
+    function next6Hours(data){
+      const now = new Date();
+      const hours = data.hourly.time.map(t=> new Date(t));
+      const idxNow = hours.findIndex(t => t >= now);
+      const slice = hours.slice(idxNow, idxNow+6);
+      return slice.map((time, i) => {
+        const j = idxNow+i;
+        return {
+          time,
+          tempF: toF(data.hourly.temperature_2m[j]),
+          apparentF: toF(data.hourly.apparent_temperature[j]),
+          humidity: data.hourly.relative_humidity_2m[j],
+          windMph: mph(data.hourly.wind_speed_10m[j]),
+          uv: data.hourly.uv_index[j],
+          precipMm: data.hourly.precipitation[j],
+          pop: data.hourly.precipitation_probability[j]
+        };
+      });
+    }
+
+    function fmtTime(d){
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function mountResults(placeLabel, hours, verdict){
+      results.innerHTML = '';
+      const summary = document.createElement('div');
+      summary.className = 'summary';
+      const badgeClass = verdict.level === 'yes' ? 'yes' : verdict.level === 'maybe' ? 'maybe' : 'no';
+      const badgeText  = verdict.level === 'yes' ? 'YES — bring a jacket' : verdict.level === 'maybe' ? 'MAYBE — light layer' : 'NO — you’re fine';
+      summary.innerHTML = `<h3><span class="badge ${badgeClass}">${badgeText}</span> <span class="tiny">for the next 6 hours</span></h3>
+        <div class="tiny">Location: ${placeLabel}</div><div class="tiny">Reason: ${verdict.reason}</div>`;
+      results.appendChild(summary);
+      const grid = document.createElement('div'); grid.className = 'grid';
+      for (const h of hours){
+        const wc = windChillF(h.apparentF, h.windMph);
+        const eff = Math.min(h.apparentF, wc);
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<div style="font-weight:800;margin-bottom:6px">${fmtTime(h.time)}</div>
+          <div class="rowline"><span>Temp</span><span>${h.tempF.toFixed(0)}°F</span></div>
+          <div class="rowline"><span>Feels like</span><span>${h.apparentF.toFixed(0)}°F</span></div>
+          <div class="rowline"><span>Effective (wind)</span><span>${eff.toFixed(0)}°F</span></div>
+          <div class="rowline"><span>Humidity</span><span>${h.humidity}%</span></div>
+          <div class="rowline"><span>Wind</span><span>${h.windMph.toFixed(0)} mph</span></div>
+          <div class="rowline"><span>UV Index</span><span>${(h.uv ?? 0).toFixed(1)}</span></div>
+          <div class="rowline"><span>Precip</span><span>${h.precipMm.toFixed(2)} mm</span></div>
+          <div class="rowline"><span>Precip prob</span><span>${h.pop ?? 0}%</span></div>`;
+        grid.appendChild(card);
+      }
+      results.appendChild(grid);
+      results.after(adSlot);
+      results.style.display = 'grid';
+    }
+
+    async function run(){
+      errBox.style.display = 'none';
+      results.style.display = 'none';
+      goBtn.disabled = true; goBtn.textContent = 'Checking…';
+      try{
+        const q = placeInput.value.trim();
+        if (!q) throw new Error('Please enter a place.');
+        const geo = await geocode(q);
+        const wx = await getWeather(geo.lat, geo.lon);
+        const hours = next6Hours(wx);
+        if (!hours.length) throw new Error('No upcoming hours found.');
+        const verdict = jacketDecision(hours);
+        mountResults(geo.label, hours, verdict);
+      }catch(e){
+        errBox.textContent = e.message || 'Something went wrong.';
+        errBox.style.display = 'block';
+      }finally{
+        goBtn.disabled = false; goBtn.textContent = 'Check weather';
+      }
+    }
+
+    goBtn.addEventListener('click', run);
+    placeInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') run(); });
+  </script>
+</body>
+</html>
